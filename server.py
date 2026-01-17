@@ -71,7 +71,6 @@ def get_systemd_services():
 @app.route("/api/services")
 def services_endpoint():
     return jsonify(get_systemd_services())
-
 def get_service_info(service_name: str):
     try:
         # 1️⃣ Get systemctl info
@@ -86,20 +85,28 @@ def get_service_info(service_name: str):
                 k, v = line.split("=", 1)
                 data[k] = v
 
-        # 2️⃣ Convert memory from bytes → MB
-        memory_bytes = int(data.get("MemoryCurrent", 0))
+        # 2️⃣ Memory in MB safely
+        memory_str = data.get("MemoryCurrent", "0")
+        try:
+            memory_bytes = int(memory_str)
+        except ValueError:
+            memory_bytes = 0
         memory_mb = round(memory_bytes / (1024 * 1024), 2)
 
-        # 3️⃣ CPU usage from systemctl (ns → s)
-        cpu_nsec = int(data.get("CPUUsageNSec", 0))
+        # 3️⃣ CPU usage safely
+        cpu_str = data.get("CPUUsageNSec", "0")
+        try:
+            cpu_nsec = int(cpu_str)
+        except ValueError:
+            cpu_nsec = 0
         cpu_sec = round(cpu_nsec / 1_000_000_000, 2)
 
-        # 4️⃣ Get live threads from `ps`
+        # 4️⃣ Threads from `ps`
         threads = 0
-        proc_name = service_name.replace('.service', '')
+        proc_name = service_name.replace(".service", "")
         try:
             ps_result = subprocess.run(
-                ['ps', '-C', proc_name, '-o', 'nlwp', '--no-headers'],
+                ["ps", "-C", proc_name, "-o", "nlwp", "--no-headers"],
                 capture_output=True,
                 text=True,
                 check=True
@@ -112,7 +119,7 @@ def get_service_info(service_name: str):
                     except ValueError:
                         continue
         except subprocess.CalledProcessError:
-            threads = 0  # service may not be runnin
+            threads = 0
 
         return {
             "name": service_name,
