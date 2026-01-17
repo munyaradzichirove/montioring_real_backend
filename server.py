@@ -155,5 +155,32 @@ def service_detail(service_name):
     return jsonify(service)
 
 
+@app.route("/api/service/<service_name>/logs")
+def service_logs(service_name):
+    try:
+        # Grab the last 100 lines of the journal for this service
+        result = subprocess.run(
+            ["journalctl", "-u", service_name, "-n", "100", "--no-pager", "--output=short-iso"],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+
+        # split lines into a list
+        logs = result.stdout.strip().splitlines()
+
+        return jsonify({
+            "service": service_name,
+            "logs": logs
+        })
+
+    except subprocess.CalledProcessError as e:
+        return jsonify({
+            "service": service_name,
+            "logs": [],
+            "error": str(e)
+        }), 500
+
+
 if __name__ == "__main__":
     app.run(debug=True)
