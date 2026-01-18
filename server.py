@@ -182,5 +182,38 @@ def service_logs(service_name):
         }), 500
 
 
+
+
+
+def run_systemctl(command: str, service_name: str):
+    """Run a systemctl command safely and return status + output."""
+    try:
+        result = subprocess.run(
+            ['sudo', 'systemctl', command, service_name],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        return {"success": True, "output": result.stdout.strip()}
+    except subprocess.CalledProcessError as e:
+        return {"success": False, "output": e.stderr.strip()}
+
+
+@app.route("/api/service/<service_name>/<action>", methods=['POST'])
+def service_action(service_name,action):
+    print("Service action called")
+    if not service_name:
+        print("no service")
+        return jsonify({"success": False, "error": "Service name is required"}), 400
+
+    valid_actions = ['start', 'stop', 'restart', 'reload', 'enable', 'disable']
+    if action not in valid_actions:
+        print(f"success")
+        return jsonify({"success": False, "error": f"Invalid action '{action}'"}), 400
+
+    result = run_systemctl(action, service_name)
+    return jsonify(result)
+
+
 if __name__ == "__main__":
     app.run(debug=True)
