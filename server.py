@@ -181,10 +181,6 @@ def service_logs(service_name):
             "error": str(e)
         }), 500
 
-
-
-
-
 def run_systemctl(command: str, service_name: str):
     """Run a systemctl command safely and return status + output."""
     try:
@@ -213,6 +209,91 @@ def service_action(service_name,action):
 
     result = run_systemctl(action, service_name)
     return jsonify(result)
+
+# ----------------------------
+# Get current monitor settings
+# ----------------------------
+@app.route("/api/monitor-settings", methods=["GET"])
+def fetch_monitor_settings():
+    settings = get_monitor_settings()
+    if settings:
+        return jsonify({"success": True, "data": settings})
+    return jsonify({"success": False, "message": "No settings found"}), 404
+
+# ----------------------------
+# Update monitor settings
+# ----------------------------
+@app.route("/api/monitor-settings", methods=["POST"])
+def save_monitor_settings():
+    data = request.json or {}
+    
+    upsert_monitor_settings(
+        auto_restart=data.get("auto_restart"),
+        alerts_enabled=data.get("alerts_enabled"),
+        whatsapp_enabled=data.get("whatsapp_enabled"),
+        whatsapp_number=data.get("whatsapp_number"),
+        email_enabled=data.get("email_enabled"),
+        primary_email=data.get("primary_email"),
+        secondary_email=data.get("secondary_email")
+    )
+    
+    return jsonify({"success": True, "message": "Settings saved"})
+
+# ----------------------------
+# List all monitored services
+# ----------------------------
+@app.route("/api/monitored-services", methods=["GET"])
+def list_services():
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM monitored_services ORDER BY service_name")
+    rows = cursor.fetchall()
+    keys = [desc[0] for desc in cursor.description]
+    services = [dict(zip(keys, row)) for row in rows]
+    conn.close()
+    return jsonify({"success": True, "data": services})
+
+
+# ----------------------------
+# Add a new service
+# ----------------------------
+@app.route("/api/monitored-services", methods=["POST"])
+def add_service():
+    data = request.json or {}
+    name = data.get("service_name")
+    notify = data.get("notify_on_fail", 1)
+
+    if not name:
+        return jsonify({"success": False, "message": "service_name is required"}), 400
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            INSERT INTO monitored_services (service_name, notify_on_fail)
+            VALUES (?, ?)
+        """, (name, 1 if notify else 0))
+        conn.commit()
+        service_id = cursor.lastrowid
+    except Exception as e:
+        conn.close()
+        return jsonify({"success": False, "message": str(e)}), 400
+
+    conn.close()
+    return jsonify({"success": True, "id": service_id})
+
+
+# ----------------------------
+# Delete a service
+# ----------------------------
+@app.route("/api/monitored-services/<int:service_id>", methods=["DELETE"])
+def delete_service(service_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM monitored_services WHERE id = ?", (service_id,))
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True, "message": f"Service {service_id} deleted"})
 
 
 if __name__ == "__main__":
