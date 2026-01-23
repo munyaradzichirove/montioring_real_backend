@@ -3,6 +3,7 @@ from flask_cors import CORS
 import subprocess
 from db import init_db, upsert_monitor_settings, get_monitor_settings
 from flask import request
+import sqlite3
 
 app = Flask(__name__)
 CORS(app)  # allow all origins
@@ -10,6 +11,8 @@ CORS(app)  # allow all origins
 def init():
     init_db()
 init()
+def get_connection():
+    return sqlite3.connect("services.db")
 
 def get_systemd_services():
     # List all services
@@ -158,6 +161,7 @@ def service_detail(service_name):
     if not service:
         return jsonify({"error": "Service not foundw"}), 404
 
+
     return jsonify(service)
 
 
@@ -275,23 +279,21 @@ def add_service():
         return jsonify({"success": False, "message": "service_name is required"}), 400
 
     conn = get_connection()
-    cursor = conn.cursor()
     try:
+        cursor = conn.cursor()
         cursor.execute("""
             INSERT INTO monitored_services (service_name, notify_on_fail)
             VALUES (?, ?)
+            ON CONFLICT(service_name) DO UPDATE SET
+                notify_on_fail=excluded.notify_on_fail
         """, (name, 1 if notify else 0))
         conn.commit()
         service_id = cursor.lastrowid
-    except Exception as e:
+    finally:
         conn.close()
-        return jsonify({"success": False, "message": str(e)}), 400
 
-    conn.close()
     return jsonify({"success": True, "id": service_id})
 
-
-# ----------------------------
 # Delete a service
 # ----------------------------
 @app.route("/api/monitored-services/<int:service_id>", methods=["DELETE"])
@@ -302,6 +304,24 @@ def delete_service(service_id):
     conn.commit()
     conn.close()
     return jsonify({"success": True, "message": f"Service {service_id} deleted"})
+    
+@app.route("/api/monitored-services/<service_name>", methods=["GET"])
+def get_monitored_service(service_name):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT * FROM monitored_services WHERE service_name = ?",
+        (service_name,)
+    )
+    row = cursor.fetchone()
+    conn.close()
+
+    if not row:
+        return jsonify({"success": False, "message": "Service not found"}), 404
+
+    keys = [desc[0] for desc in cursor.description]
+    service = dict(zip(keys, row))
+    return jsonify({"success": True, "data": service})
 
 
 if __name__ == "__main__":
