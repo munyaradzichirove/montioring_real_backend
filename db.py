@@ -1,11 +1,10 @@
 # db.py
 import sqlite3
 from pathlib import Path
-from db import get_connection
 
 
-DB_PATH = Path(__file__).parent / "services.db"
 
+DB_PATH = "./services.db"
 
 def get_connection():
     return sqlite3.connect(DB_PATH)
@@ -22,10 +21,7 @@ def init_db():
             auto_restart INTEGER NOT NULL DEFAULT 0,
             alerts_enabled INTEGER NOT NULL DEFAULT 1,
             whatsapp_enabled INTEGER NOT NULL DEFAULT 0,
-            whatsapp_number TEXT,
-            whatsapp_id TEXT,
-            whatsapp_token TEXT,
-            template_name TEXT,
+            whatsapp_number TEXT,  -- store WhatsApp info as JSON
             email_enabled INTEGER NOT NULL DEFAULT 0,
             primary_email TEXT,
             secondary_email TEXT,
@@ -58,18 +54,26 @@ def init_db():
     conn.close()
 # db_helpers.py (add this)
 
+import json
+from db import get_connection
 
 def upsert_monitor_settings(
     auto_restart=None,
     alerts_enabled=None,
     whatsapp_enabled=None,
-    whatsapp_number=None,
+    whatsapp_number=None,  # can be dict
     email_enabled=None,
     primary_email=None,
     secondary_email=None
 ):
     conn = get_connection()
     cursor = conn.cursor()
+
+    # convert whatsapp_number dict to JSON string
+    if isinstance(whatsapp_number, dict):
+        whatsapp_number_str = json.dumps(whatsapp_number)
+    else:
+        whatsapp_number_str = whatsapp_number or ''
 
     # check if row exists
     cursor.execute("SELECT COUNT(*) FROM monitor_settings WHERE id = 1")
@@ -87,7 +91,7 @@ def upsert_monitor_settings(
             auto_restart or 0,
             alerts_enabled if alerts_enabled is not None else 1,
             whatsapp_enabled or 0,
-            whatsapp_number or '',
+            whatsapp_number_str,
             email_enabled or 0,
             primary_email or '',
             secondary_email or ''
@@ -109,7 +113,7 @@ def upsert_monitor_settings(
             auto_restart if auto_restart is not None else 0,
             alerts_enabled if alerts_enabled is not None else 1,
             whatsapp_enabled if whatsapp_enabled is not None else 0,
-            whatsapp_number or '',
+            whatsapp_number_str,
             email_enabled if email_enabled is not None else 0,
             primary_email or '',
             secondary_email or ''
@@ -117,6 +121,7 @@ def upsert_monitor_settings(
 
     conn.commit()
     conn.close()
+
 
 # ----------------------------
 # Monitor Settings (singleton)
@@ -126,12 +131,22 @@ def get_monitor_settings():
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM monitor_settings WHERE id = 1")
     row = cursor.fetchone()
+
+    # grab column names before closing connection
+    keys = [desc[0] for desc in cursor.description]
     conn.close()
+
     if row:
-        # convert sqlite row to dict
-        keys = [desc[0] for desc in cursor.description]
-        return dict(zip(keys, row))
+        data = dict(zip(keys, row))
+        # convert whatsapp_number back to dict if it's JSON
+        try:
+            data["whatsapp_number"] = json.loads(data.get("whatsapp_number") or "{}")
+        except json.JSONDecodeError:
+            data["whatsapp_number"] = {}
+        return data
+
     return None
+
 
 # ----------------------------
 # Monitored Services

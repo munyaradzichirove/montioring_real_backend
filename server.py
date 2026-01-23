@@ -1,9 +1,15 @@
 from flask import Flask, jsonify
 from flask_cors import CORS
 import subprocess
+from db import init_db, upsert_monitor_settings, get_monitor_settings
+from flask import request
 
 app = Flask(__name__)
 CORS(app)  # allow all origins
+
+def init():
+    init_db()
+init()
 
 def get_systemd_services():
     # List all services
@@ -222,22 +228,24 @@ def fetch_monitor_settings():
 
 # ----------------------------
 # Update monitor settings
-# ----------------------------
 @app.route("/api/monitor-settings", methods=["POST"])
 def save_monitor_settings():
+    print("Data received:", request.json)
     data = request.json or {}
-    
-    upsert_monitor_settings(
-        auto_restart=data.get("auto_restart"),
-        alerts_enabled=data.get("alerts_enabled"),
-        whatsapp_enabled=data.get("whatsapp_enabled"),
-        whatsapp_number=data.get("whatsapp_number"),
-        email_enabled=data.get("email_enabled"),
-        primary_email=data.get("primary_email"),
-        secondary_email=data.get("secondary_email")
-    )
-    
-    return jsonify({"success": True, "message": "Settings saved"})
+    try:
+        upsert_monitor_settings(
+            auto_restart=data.get("auto_restart"),
+            alerts_enabled=data.get("alerts_enabled"),
+            whatsapp_enabled=data.get("whatsapp_enabled"),
+            whatsapp_number=data.get("whatsapp_number"),
+            email_enabled=data.get("email_enabled"),
+            primary_email=data.get("primary_email"),
+            secondary_email=data.get("secondary_email")
+        )
+        return jsonify({"success": True, "message": "Settings saved"})
+    except Exception as e:
+        print("Error in upsert:", e)
+        return jsonify({"success": False, "message": str(e)}), 500
 
 # ----------------------------
 # List all monitored services
